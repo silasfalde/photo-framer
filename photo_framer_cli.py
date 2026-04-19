@@ -47,8 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory for framed images.",
     )
     parser.add_argument("--target-width", type=int, default=1080)
-    parser.add_argument("--target-height", type=int, default=1440)
-    parser.add_argument("--baseline-frame-width", type=int, default=60)
+    parser.add_argument("--target-height", type=int, default=1350)
+    parser.add_argument("--baseline-frame-width", type=int, default=30)
     parser.add_argument("--frame-color", default="255,255,255")
     parser.add_argument("--jpeg-quality", type=int, default=100)
     parser.add_argument("--jpeg-subsampling", type=int, default=0)

@@ -41,7 +41,7 @@ Common options:
 - --processed-dir PATH
 - --framed-dir PATH
 - --target-width INT (default 1080)
-- --target-height INT (default 1440)
+- --target-height INT (default 1350)
 - --baseline-frame-width INT (default 60)
 - --frame-color R,G,B (default 255,255,255)
 - --extensions .jpg,.jpeg

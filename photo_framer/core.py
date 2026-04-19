@@ -111,6 +111,39 @@ def fit_inside(
     return new_w, new_h
 
 
+def resize_to_cover_and_crop(
+    img: Image.Image,
+    target_w: int,
+    target_h: int,
+    allow_upscale: bool,
+) -> Image.Image:
+    if target_w <= 0 or target_h <= 0:
+        raise ValueError("Target dimensions must be positive")
+
+    scale = max(target_w / img.width, target_h / img.height)
+    if not allow_upscale:
+        scale = min(scale, 1.0)
+
+    new_w = max(1, int(round(img.width * scale)))
+    new_h = max(1, int(round(img.height * scale)))
+    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+    # Center-crop to the drawable area; when upscaling is disabled and the image is too small,
+    # keep it as-is and let caller center it with extra border.
+    if new_w <= target_w and new_h <= target_h:
+        return resized
+
+    left = max(0, (new_w - target_w) // 2)
+    top = max(0, (new_h - target_h) // 2)
+    right = min(new_w, left + target_w)
+    bottom = min(new_h, top + target_h)
+    return resized.crop((left, top, right, bottom))
+
+
+def split_frame_baseline(baseline: int) -> int:
+    return baseline
+
+
 def render_framed_full(
     img: Image.Image,
     target_size: Tuple[int, int],
@@ -125,8 +158,8 @@ def render_framed_full(
         raise ValueError("Baseline frame width is too large for target size")
 
     out = Image.new("RGB", (target_w, target_h), frame_color)
-    new_w, new_h = fit_inside(img.width, img.height, avail_w, avail_h, allow_upscale)
-    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    resized = resize_to_cover_and_crop(img, avail_w, avail_h, allow_upscale)
+    new_w, new_h = resized.size
 
     x = baseline + ((avail_w - new_w) // 2)
     y = baseline + ((avail_h - new_h) // 2)
@@ -153,13 +186,14 @@ def render_framed_split_half(
         raise ValueError("side must be 'left' or 'right'")
 
     target_w, target_h = target_size
-    avail_w = target_w - baseline
+    split_baseline = split_frame_baseline(baseline)
+    avail_w = target_w - split_baseline
     avail_h = target_h - (2 * baseline)
     if avail_w <= 0 or avail_h <= 0:
         raise ValueError("Baseline frame width is too large for target size")
 
-    new_w, new_h = fit_inside(img.width, img.height, avail_w, avail_h, allow_upscale)
-    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    resized = resize_to_cover_and_crop(img, avail_w, avail_h, allow_upscale)
+    new_w, new_h = resized.size
 
     out = Image.new("RGB", (target_w, target_h), frame_color)
     y = baseline + ((avail_h - new_h) // 2)
@@ -370,16 +404,17 @@ def validate_outputs(
             )
 
     for name, b in framed_borders.items():
+        split_baseline = split_frame_baseline(cfg.baseline_frame_width)
         if name.endswith("_L.jpg"):
             assert b.right == 0, f"Left split must have zero right border: {name}"
-            assert b.left >= cfg.baseline_frame_width, (
+            assert b.left >= split_baseline, (
                 f"Left split outer border below baseline: {name}, left={b.left}"
             )
             assert b.top >= cfg.baseline_frame_width
             assert b.bottom >= cfg.baseline_frame_width
         elif name.endswith("_R.jpg"):
             assert b.left == 0, f"Right split must have zero left border: {name}"
-            assert b.right >= cfg.baseline_frame_width, (
+            assert b.right >= split_baseline, (
                 f"Right split outer border below baseline: {name}, right={b.right}"
             )
             assert b.top >= cfg.baseline_frame_width
@@ -426,10 +461,10 @@ def run_basic_tests() -> None:
         allow_upscale=True,
     )
     assert framed.size == (1080, 1440)
-    assert border.left >= 60
-    assert border.right >= 60
-    assert border.top >= 60
-    assert border.bottom >= 60
+    assert border.left == 60
+    assert border.right == 60
+    assert border.top == 60
+    assert border.bottom == 60
 
     left_framed, left_border = render_framed_split_half(
         Image.new("RGB", (1080, 1440), (1, 1, 1)),
@@ -449,10 +484,15 @@ def run_basic_tests() -> None:
     )
     assert left_framed.size == (1080, 1440)
     assert right_framed.size == (1080, 1440)
+    split_baseline = split_frame_baseline(40)
     assert left_border.right == 0
-    assert left_border.left >= 40
+    assert left_border.left == split_baseline
+    assert left_border.top == 40
+    assert left_border.bottom == 40
     assert right_border.left == 0
-    assert right_border.right >= 40
+    assert right_border.right == split_baseline
+    assert right_border.top == 40
+    assert right_border.bottom == 40
 
     try:
         render_framed_split_half(
