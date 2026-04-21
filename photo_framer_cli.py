@@ -90,7 +90,7 @@ def main() -> int:
     args = parser.parse_args()
 
     source_dir = args.source_dir.resolve()
-    processed_dir = (args.processed_dir or source_dir.parent / f"{source_dir.name}-processed").resolve()
+    processed_dir = (args.processed_dir or source_dir.parent / "instagram").resolve()
     framed_dir = (args.framed_dir or source_dir.parent / f"{source_dir.name}-framed").resolve()
 
     try:
