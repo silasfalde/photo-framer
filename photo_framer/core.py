@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import math
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageOps
+
+
+ASPECT_RATIO_TOLERANCE = 0.02
 
 
 @dataclass(frozen=True)
@@ -79,7 +83,21 @@ def load_image_and_metadata(path: Path) -> Tuple[Image.Image, Optional[bytes], O
 
 
 def is_landscape(img: Image.Image) -> bool:
-    return img.width > img.height
+    return math.isclose(img.width / img.height, 2.0, rel_tol=ASPECT_RATIO_TOLERANCE, abs_tol=ASPECT_RATIO_TOLERANCE)
+
+
+def is_portrait_or_square(img: Image.Image) -> bool:
+    return math.isclose(img.width / img.height, 1.0, rel_tol=ASPECT_RATIO_TOLERANCE, abs_tol=ASPECT_RATIO_TOLERANCE)
+
+
+def classify_source_image(img: Image.Image) -> str:
+    if is_landscape(img):
+        return "landscape_split"
+    if is_portrait_or_square(img):
+        return "portrait_or_square"
+    raise ValueError(
+        "Unsupported image dimensions: expected square or 2:1 horizontal images (within tolerance)"
+    )
 
 
 def split_landscape_exact(img: Image.Image) -> Tuple[Image.Image, Image.Image]:
@@ -111,7 +129,7 @@ def fit_inside(
     return new_w, new_h
 
 
-def resize_to_cover_and_crop(
+def resize_to_fit(
     img: Image.Image,
     target_w: int,
     target_h: int,
@@ -120,24 +138,10 @@ def resize_to_cover_and_crop(
     if target_w <= 0 or target_h <= 0:
         raise ValueError("Target dimensions must be positive")
 
-    scale = max(target_w / img.width, target_h / img.height)
-    if not allow_upscale:
-        scale = min(scale, 1.0)
-
-    new_w = max(1, int(round(img.width * scale)))
-    new_h = max(1, int(round(img.height * scale)))
-    resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-    # Center-crop to the drawable area; when upscaling is disabled and the image is too small,
-    # keep it as-is and let caller center it with extra border.
-    if new_w <= target_w and new_h <= target_h:
-        return resized
-
-    left = max(0, (new_w - target_w) // 2)
-    top = max(0, (new_h - target_h) // 2)
-    right = min(new_w, left + target_w)
-    bottom = min(new_h, top + target_h)
-    return resized.crop((left, top, right, bottom))
+    new_w, new_h = fit_inside(img.width, img.height, target_w, target_h, allow_upscale)
+    if (new_w, new_h) == img.size:
+        return img
+    return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
 
 def split_frame_baseline(baseline: int) -> int:
@@ -158,7 +162,7 @@ def render_framed_full(
         raise ValueError("Baseline frame width is too large for target size")
 
     out = Image.new("RGB", (target_w, target_h), frame_color)
-    resized = resize_to_cover_and_crop(img, avail_w, avail_h, allow_upscale)
+    resized = resize_to_fit(img, avail_w, avail_h, allow_upscale)
     new_w, new_h = resized.size
 
     x = baseline + ((avail_w - new_w) // 2)
@@ -192,7 +196,7 @@ def render_framed_split_half(
     if avail_w <= 0 or avail_h <= 0:
         raise ValueError("Baseline frame width is too large for target size")
 
-    resized = resize_to_cover_and_crop(img, avail_w, avail_h, allow_upscale)
+    resized = resize_to_fit(img, avail_w, avail_h, allow_upscale)
     new_w, new_h = resized.size
 
     out = Image.new("RGB", (target_w, target_h), frame_color)
@@ -248,7 +252,8 @@ def summarize_source_images(cfg: AppConfig) -> Tuple[int, int, int]:
     portraits = 0
     for p in source_files:
         img = load_image(p)
-        if is_landscape(img):
+        mode = classify_source_image(img)
+        if mode == "landscape_split":
             landscapes += 1
         else:
             portraits += 1
@@ -274,7 +279,9 @@ def process_all(
             stem = src.stem
             suffix = ".jpg"
 
-            if is_landscape(img):
+            mode = classify_source_image(img)
+
+            if mode == "landscape_split":
                 stats.landscapes += 1
                 left_img, right_img = split_landscape_exact(img)
 
@@ -375,7 +382,8 @@ def validate_outputs(
     portraits: List[Path] = []
     for p in src_files:
         img = load_image(p)
-        (landscapes if is_landscape(img) else portraits).append(p)
+        mode = classify_source_image(img)
+        (landscapes if mode == "landscape_split" else portraits).append(p)
 
     processed_files = sorted([p.name for p in cfg.processed_dir.glob("*.jpg")])
     framed_files = sorted([p.name for p in cfg.framed_dir.glob("*.jpg")])
@@ -453,52 +461,65 @@ def run_basic_tests() -> None:
     assert left.height == test_img.height
     assert right.height == test_img.height
 
+    assert is_landscape(Image.new("RGB", (2000, 1000), (1, 2, 3)))
+    assert not is_landscape(Image.new("RGB", (1000, 1000), (1, 2, 3)))
+    assert classify_source_image(Image.new("RGB", (1000, 1000), (1, 2, 3))) == "portrait_or_square"
+    assert classify_source_image(Image.new("RGB", (2000, 1000), (1, 2, 3))) == "landscape_split"
+    assert classify_source_image(Image.new("RGB", (1001, 1000), (1, 2, 3))) == "portrait_or_square"
+    assert classify_source_image(Image.new("RGB", (2001, 1000), (1, 2, 3))) == "landscape_split"
+
+    try:
+        classify_source_image(Image.new("RGB", (1300, 1000), (1, 2, 3)))
+        raise AssertionError("Expected ValueError for unsupported aspect ratio")
+    except ValueError:
+        pass
+
     framed, border = render_framed_full(
-        Image.new("RGB", (3000, 4500), (50, 60, 70)),
-        target_size=(1080, 1440),
+        Image.new("RGB", (960, 960), (50, 60, 70)),
+        target_size=(1080, 1080),
         baseline=60,
         frame_color=(255, 255, 255),
         allow_upscale=True,
     )
-    assert framed.size == (1080, 1440)
+    assert framed.size == (1080, 1080)
     assert border.left == 60
     assert border.right == 60
     assert border.top == 60
     assert border.bottom == 60
 
     left_framed, left_border = render_framed_split_half(
-        Image.new("RGB", (1080, 1440), (1, 1, 1)),
+        Image.new("RGB", (1080, 1080), (1, 1, 1)),
         side="left",
-        target_size=(1080, 1440),
+        target_size=(1080, 1080),
         baseline=40,
         frame_color=(255, 255, 255),
-        allow_upscale=True,
+        allow_upscale=False,
     )
     right_framed, right_border = render_framed_split_half(
-        Image.new("RGB", (1080, 1440), (1, 1, 1)),
+        Image.new("RGB", (1080, 1080), (1, 1, 1)),
         side="right",
-        target_size=(1080, 1440),
+        target_size=(1080, 1080),
         baseline=40,
         frame_color=(255, 255, 255),
-        allow_upscale=True,
+        allow_upscale=False,
     )
-    assert left_framed.size == (1080, 1440)
-    assert right_framed.size == (1080, 1440)
+    assert left_framed.size == (1080, 1080)
+    assert right_framed.size == (1080, 1080)
     split_baseline = split_frame_baseline(40)
     assert left_border.right == 0
-    assert left_border.left == split_baseline
+    assert left_border.left == 80
     assert left_border.top == 40
     assert left_border.bottom == 40
     assert right_border.left == 0
-    assert right_border.right == split_baseline
+    assert right_border.right == 80
     assert right_border.top == 40
     assert right_border.bottom == 40
 
     try:
         render_framed_split_half(
-            Image.new("RGB", (1080, 1440), (1, 1, 1)),
+            Image.new("RGB", (1080, 1080), (1, 1, 1)),
             side="bad",
-            target_size=(1080, 1440),
+            target_size=(1080, 1080),
             baseline=40,
             frame_color=(255, 255, 255),
             allow_upscale=True,

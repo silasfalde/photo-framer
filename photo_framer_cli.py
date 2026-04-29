@@ -47,7 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory for framed images.",
     )
     parser.add_argument("--target-width", type=int, default=1080)
-    parser.add_argument("--target-height", type=int, default=1350)
+    parser.add_argument(
+        "--framed-aspect-ratio",
+        choices=("1:1", "4:3"),
+        default="1:1",
+        help="Aspect ratio for framed outputs when target height is not explicitly set.",
+    )
+    parser.add_argument(
+        "--target-height",
+        type=int,
+        help="Explicit framed output height. If omitted, it is derived from --framed-aspect-ratio.",
+    )
     parser.add_argument("--baseline-frame-width", type=int, default=30)
     parser.add_argument("--frame-color", default="255,255,255")
     parser.add_argument("--jpeg-quality", type=int, default=100)
@@ -91,7 +101,12 @@ def main() -> int:
 
     source_dir = args.source_dir.resolve()
     processed_dir = (args.processed_dir or source_dir.parent / "instagram").resolve()
-    framed_dir = (args.framed_dir or source_dir.parent / f"{source_dir.name}-framed").resolve()
+    framed_dir = (args.framed_dir or source_dir.parent / "instagram-framed").resolve()
+
+    if args.target_height is None:
+        target_height = args.target_width if args.framed_aspect_ratio == "1:1" else int(round(args.target_width * 3 / 4))
+    else:
+        target_height = args.target_height
 
     try:
         frame_color = parse_frame_color(args.frame_color)
@@ -106,7 +121,7 @@ def main() -> int:
         source_dir=source_dir,
         processed_dir=processed_dir,
         framed_dir=framed_dir,
-        target_size=(args.target_width, args.target_height),
+        target_size=(args.target_width, target_height),
         baseline_frame_width=args.baseline_frame_width,
         frame_color=frame_color,
         allow_upscale=not args.no_upscale,

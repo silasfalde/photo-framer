@@ -4,6 +4,8 @@ Photo Framer processes images from any input directory and produces:
 - processed outputs (split landscape images or copied portraits)
 - framed outputs sized for Instagram-style posting
 
+Input directories should contain images that are close to square or close to 2:1 horizontal. Horizontal images are treated as the split case, and square images are treated as the portrait/square case.
+
 The core logic lives in the Python package and is reused by both:
 - a command line script
 - the notebook
@@ -29,7 +31,7 @@ You can also run the executable form:
 
 Default outputs are created next to the source directory:
 - SOURCE_NAME-processed
-- SOURCE_NAME-framed
+- instagram-framed
 
 ## CLI Usage
 
@@ -41,7 +43,8 @@ Common options:
 - --processed-dir PATH
 - --framed-dir PATH
 - --target-width INT (default 1080)
-- --target-height INT (default 1350)
+- --framed-aspect-ratio 1:1|4:3 (default 1:1)
+- --target-height INT (optional explicit override)
 - --baseline-frame-width INT (default 60)
 - --frame-color R,G,B (default 255,255,255)
 - --extensions .jpg,.jpeg
@@ -54,6 +57,8 @@ Common options:
 Example with explicit output folders:
 
 python photo_framer_cli.py ./instagram --processed-dir ./instagram-processed --framed-dir ./instagram-framed --validate
+
+By default, framed outputs are square. Use `--framed-aspect-ratio 4:3` if you want a 4:3 framed canvas instead.
 
 ## Notebook Usage
 
