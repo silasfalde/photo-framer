@@ -90,13 +90,25 @@ def is_portrait_or_square(img: Image.Image) -> bool:
     return math.isclose(img.width / img.height, 1.0, rel_tol=ASPECT_RATIO_TOLERANCE, abs_tol=ASPECT_RATIO_TOLERANCE)
 
 
+def is_four_thirds(img: Image.Image) -> bool:
+    return math.isclose(img.width / img.height, 4.0 / 3.0, rel_tol=ASPECT_RATIO_TOLERANCE, abs_tol=ASPECT_RATIO_TOLERANCE)
+
+
+def is_three_fourths(img: Image.Image) -> bool:
+    return math.isclose(img.width / img.height, 3.0 / 4.0, rel_tol=ASPECT_RATIO_TOLERANCE, abs_tol=ASPECT_RATIO_TOLERANCE)
+
+
 def classify_source_image(img: Image.Image) -> str:
     if is_landscape(img):
         return "landscape_split"
     if is_portrait_or_square(img):
         return "portrait_or_square"
+    if is_four_thirds(img):
+        return "portrait_or_square"
+    if is_three_fourths(img):
+        return "portrait_or_square"
     raise ValueError(
-        "Unsupported image dimensions: expected square or 2:1 horizontal images (within tolerance)"
+        "Unsupported image dimensions: expected square, 4:3, 3:4, or 2:1 horizontal images (within tolerance)"
     )
 
 

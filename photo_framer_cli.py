@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-width", type=int, default=1080)
     parser.add_argument(
         "--framed-aspect-ratio",
-        choices=("1:1", "4:3"),
+        choices=("1:1", "4:3", "3:4"),
         default="1:1",
         help="Aspect ratio for framed outputs when target height is not explicitly set.",
     )
@@ -104,7 +104,12 @@ def main() -> int:
     framed_dir = (args.framed_dir or source_dir.parent / "instagram-framed").resolve()
 
     if args.target_height is None:
-        target_height = args.target_width if args.framed_aspect_ratio == "1:1" else int(round(args.target_width * 3 / 4))
+        if args.framed_aspect_ratio == "1:1":
+            target_height = args.target_width
+        elif args.framed_aspect_ratio == "4:3":
+            target_height = int(round(args.target_width * 3 / 4))
+        else:  # 3:4
+            target_height = int(round(args.target_width * 4 / 3))
     else:
         target_height = args.target_height
 

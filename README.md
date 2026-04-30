@@ -43,7 +43,7 @@ Common options:
 - --processed-dir PATH
 - --framed-dir PATH
 - --target-width INT (default 1080)
-- --framed-aspect-ratio 1:1|4:3 (default 1:1)
+- --framed-aspect-ratio 1:1|4:3|3:4 (default 1:1)
 - --target-height INT (optional explicit override)
 - --baseline-frame-width INT (default 60)
 - --frame-color R,G,B (default 255,255,255)
@@ -58,7 +58,7 @@ Example with explicit output folders:
 
 python photo_framer_cli.py ./instagram --processed-dir ./instagram-processed --framed-dir ./instagram-framed --validate
 
-By default, framed outputs are square. Use `--framed-aspect-ratio 4:3` if you want a 4:3 framed canvas instead.
+By default, framed outputs are square. Use `--framed-aspect-ratio 4:3` for landscape or `--framed-aspect-ratio 3:4` for portrait framing.
 
 ## Notebook Usage
 
